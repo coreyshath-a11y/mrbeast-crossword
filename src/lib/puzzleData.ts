@@ -287,6 +287,86 @@ export const CLUES: ClueData[] = [
   { number: 170, direction: 'down', clue: '', cells: [[22,20],[23,20],[24,20]] },
 ];
 
+// AI-generated guesses: "row,col" → letter
+// Compiled from clue analysis, crossing constraints, and reference data
+export const AI_GUESSES: Record<string, string> = (() => {
+  const answers: { cells: [number, number][]; answer: string }[] = [
+    // === ACROSS ===
+    // 8A: "Players on T-Swift's 'Mean'" = BANJO (5 cells)
+    { cells: [[0,9],[0,10],[0,11],[0,12],[0,13]], answer: 'BANJO' },
+    // 24A: "One collapsed in 1980 in Washington" = ST HELENS
+    { cells: [[1,17],[1,18],[1,19],[1,20],[1,21],[1,22],[1,23],[1,24]], answer: 'STHELENS' },
+    // 30A: "Words heard in Shibuya" = SUGOI
+    { cells: [[3,5],[3,6],[3,7],[3,8],[3,9]], answer: 'SUGOI' },
+    // 35A: "Support that's also shaped like an H" = BEAM (H-beam)
+    { cells: [[4,0],[4,1],[4,2],[4,3]], answer: 'BEAM' },
+    // 42A: "Mia in the 'Fifty Shades' series" = RITA (Dakota Johnson's character is Anastasia... but Mia is Rita? Actually Rita Ora played Mia)
+    { cells: [[5,0],[5,1],[5,2],[5,3]], answer: 'RITA' },
+    // 48A: "Cosmetics shop purchase" = SKINS
+    { cells: [[5,20],[5,21],[5,22],[5,23],[5,24]], answer: 'SKINS' },
+    // 58A: '"___ Ninja" YouTube series' = ASKA
+    { cells: [[7,8],[7,9],[7,10],[7,11]], answer: 'ASKA' },
+    // 64A: "Start of a Supremes song or end of a Christmas song" = SANTA
+    { cells: [[8,4],[8,5],[8,6],[8,7],[8,8]], answer: 'SANTA' },
+    // 72A: "Tatum franchise" = BOSTON (Celtics)
+    { cells: [[9,3],[9,4],[9,5],[9,6],[9,7],[9,8]], answer: 'BOSTON' },
+    // 80A: theme entry = KYLIAN (Mbappé)
+    { cells: [[10,10],[10,11],[10,12],[10,13],[10,14],[10,15]], answer: 'KYLIAN' },
+    // 85A: "Guitarist Harrison" = DHANI
+    { cells: [[11,6],[11,7],[11,8],[11,9],[11,10]], answer: 'DHANI' },
+    // 92A: theme = VACATE
+    { cells: [[12,0],[12,1],[12,2],[12,3],[12,4],[12,5]], answer: 'VACATE' },
+    // 100A: "Smartphone powerer" = APP
+    { cells: [[13,4],[13,5],[13,6]], answer: 'APP' },
+    // 106A: "The Cavaliers" = NBA
+    { cells: [[14,0],[14,1],[14,2]], answer: 'NBA' },
+    // 113A: "Anthony's result vs. Jake" = TKO
+    { cells: [[14,21],[14,22],[14,23]], answer: 'TKO' },
+    // 120A: "One of two women in Spinderella's trio" = PEPA (Salt-N-Pepa)
+    { cells: [[16,5],[16,6],[16,7],[16,8]], answer: 'PEPA' },
+    // 127A: "Sounds in the night" = CICADA
+    { cells: [[17,1],[17,2],[17,3],[17,4],[17,5],[17,6]], answer: 'CICADA' },
+    // 136A: "Alpine municipality" = BERGUN (Bergün, Switzerland)
+    { cells: [[18,2],[18,3],[18,4],[18,5],[18,6],[18,7]], answer: 'BERGUN' },
+    // 145A: "Jungler Moon Hyeon-jun" = ONER
+    { cells: [[19,12],[19,13],[19,14],[19,15]], answer: 'ONER' },
+    // 149A: "Theatricality" = OPERATICS
+    { cells: [[20,4],[20,5],[20,6],[20,7],[20,8],[20,9],[20,10],[20,11],[20,12]], answer: 'OPERATICS' },
+    // 158A: "Not one's best effort" = BGAME
+    { cells: [[21,5],[21,6],[21,7],[21,8],[21,9]], answer: 'BGAME' },
+    // 165A: "Amount for Team Trees, Team Seas, or Team Water" = DONATION
+    { cells: [[22,0],[22,1],[22,2],[22,3],[22,4],[22,5],[22,6],[22,7]], answer: 'DONATION' },
+    // 173A: "One that hangs out at the swimming hole" = OPOSSUM
+    { cells: [[23,18],[23,19],[23,20],[23,21],[23,22],[23,23],[23,24]], answer: 'OPOSSUM' },
+
+    // === DOWN ===
+    // 1D: "Dry comment" = SAGEBRUSH (confirmed by crossings: BEAM→B, RITA→R)
+    { cells: [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]], answer: 'SAGEBRUSH' },
+    // 5D: "T.I. flick" = ATL (2006 film)
+    { cells: [[0,4],[1,4],[2,4]], answer: 'ATL' },
+    // 9D: "Bring Me the Horizon release" = AMO (album)
+    { cells: [[0,10],[1,10],[2,10]], answer: 'AMO' },
+    // 37D: "Takes a hot bath" = SOAK
+    { cells: [[4,10],[5,10],[6,10],[7,10]], answer: 'SOAK' },
+    // 108D: "Motor oil brand" = STP
+    { cells: [[14,7],[15,7],[16,7]], answer: 'STP' },
+    // 142D: "Largest European lake" = LADOGA
+    { cells: [[19,1],[20,1],[21,1],[22,1],[23,1],[24,1]], answer: 'LADOGA' },
+    // 162D: "Easy as falling off ___" = LOG
+    { cells: [[21,18],[22,18],[23,18]], answer: 'LOG' },
+    // 169D: "NW-based retailer" = REI
+    { cells: [[22,14],[23,14],[24,14]], answer: 'REI' },
+  ];
+
+  const map: Record<string, string> = {};
+  for (const { cells: c, answer } of answers) {
+    for (let i = 0; i < c.length && i < answer.length; i++) {
+      map[`${c[i][0]},${c[i][1]}`] = answer[i];
+    }
+  }
+  return map;
+})();
+
 // Helper: check if cell is black
 export function isBlack(row: number, col: number): boolean {
   return PUZZLE_GRID[row]?.[col] === "#";

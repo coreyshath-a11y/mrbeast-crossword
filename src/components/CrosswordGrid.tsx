@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { GRID_SIZE, CIRCLED_CELLS, CLUES, isBlack, getCellNumber } from '@/lib/puzzleData';
+import { GRID_SIZE, CIRCLED_CELLS, CLUES, isBlack, getCellNumber, AI_GUESSES } from '@/lib/puzzleData';
 import { getSupabase, CellEntry, ClueEntry } from '@/lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -342,9 +342,16 @@ export default function CrosswordGrid() {
     }
   };
 
+  const [aiGuessKeys] = useState<Set<string>>(() => new Set(Object.keys(AI_GUESSES)));
+
   const handleTabChange = (tab: 'puzzle' | 'sandbox') => {
     if (tab === 'sandbox' && !sandboxInited) {
-      setSandboxCells({ ...cells });
+      // Start with current puzzle data, then overlay AI guesses
+      const merged: Record<string, CellState> = { ...cells };
+      for (const [key, letter] of Object.entries(AI_GUESSES)) {
+        merged[key] = { value: letter, updatedBy: 'AI Solver' };
+      }
+      setSandboxCells(merged);
       setSandboxInited(true);
     }
     setActiveTab(tab);
@@ -387,13 +394,22 @@ export default function CrosswordGrid() {
 
         {/* Sandbox controls */}
         {activeTab === 'sandbox' && (
-          <div className="flex gap-2 mb-2 text-xs">
+          <div className="flex flex-wrap gap-2 mb-2 text-xs">
             <span className="text-purple-600 font-medium bg-purple-50 px-2 py-1 rounded">Sandbox mode — edits are local only</span>
+            <span className="flex items-center gap-1 bg-purple-100 px-2 py-1 rounded text-purple-700">
+              <span className="w-2.5 h-2.5 bg-purple-300 rounded-sm inline-block" /> = AI guess
+            </span>
             <button
               className="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded text-gray-700 transition-colors"
-              onClick={() => { setSandboxCells({ ...cells }); }}
+              onClick={() => {
+                const merged: Record<string, CellState> = { ...cells };
+                for (const [key, letter] of Object.entries(AI_GUESSES)) {
+                  merged[key] = { value: letter, updatedBy: 'AI Solver' };
+                }
+                setSandboxCells(merged);
+              }}
             >
-              Copy from Puzzle
+              Copy from Puzzle + AI
             </button>
             <button
               className="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded text-gray-700 transition-colors"
@@ -438,11 +454,14 @@ export default function CrosswordGrid() {
                 const isCompleted = completedCells.has(cellKey);
                 const remoteCursor = activeTab === 'puzzle' ? cursors[cellKey] : undefined;
 
+                const isAiGuess = activeTab === 'sandbox' && aiGuessKeys.has(cellKey) && cellValue === AI_GUESSES[cellKey];
+
                 if (black) return <div key={cellKey} className="bg-black border border-gray-800" style={{ width: CELL_SIZE, height: CELL_SIZE }} />;
 
-                // Background priority: selected > highlighted > completed > white
+                // Background priority: selected > highlighted > ai-guess/completed > white
                 let bgClass = 'bg-white';
-                if (isCompleted && !isSelected && !isHighlighted) bgClass = 'bg-gray-100';
+                if (isAiGuess && !isSelected && !isHighlighted) bgClass = 'bg-purple-100';
+                else if (isCompleted && !isSelected && !isHighlighted) bgClass = 'bg-gray-100';
                 if (isHighlighted && !isSelected) bgClass = 'bg-blue-100';
                 if (isSelected) bgClass = 'bg-yellow-300 z-10';
 
@@ -473,7 +492,7 @@ export default function CrosswordGrid() {
                     {number !== null && (
                       <span className="absolute top-0 left-0.5 text-black font-semibold leading-none pointer-events-none" style={{ fontSize: `${NUMBER_FONT}px` }}>{number}</span>
                     )}
-                    <span className="text-black font-bold pointer-events-none select-none" style={{ fontSize: '14px', marginTop: number !== null ? '3px' : '0' }}>{cellValue}</span>
+                    <span className={`font-bold pointer-events-none select-none ${isAiGuess ? 'text-purple-700' : 'text-black'}`} style={{ fontSize: '14px', marginTop: number !== null ? '3px' : '0' }}>{cellValue}</span>
                   </div>
                 );
               })
