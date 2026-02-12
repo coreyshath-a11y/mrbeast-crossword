@@ -327,11 +327,13 @@ export const AI_GUESSES: Record<string, string> = (() => {
     { cells: [[22,14],[23,14],[24,14]], answer: 'REI' },               // 169D "NW-based retailer"
     // 65D: confirmed by 3 crossings: SANTA T(8,7), BOSTON O(9,7), DHANI H(11,7)
     { cells: [[8,7],[9,7],[10,7],[11,7]], answer: 'TOSH' },           // 65D (theme, "nonsense")
-    // 75D: "Host of Christmas Holiday Halftime Party" = SNOOPY (Peanuts)
-    // Confirmed: KYLIAN N(10,15), reference P(13,15), derives O(11,15), O(12,15), Y(14,15)
-    { cells: [[9,15],[10,15],[11,15],[12,15],[13,15],[14,15]], answer: 'SNOOPY' }, // 75D
+    // 75D: "Host of Christmas Holiday Halftime Party" = SNOOP (Snoop Dogg)
+    // Grid has black cell at (14,15), so 5 cells only. Confirmed: KYLIAN N(10,15), P(13,15)
+    { cells: [[9,15],[10,15],[11,15],[12,15],[13,15]], answer: 'SNOOP' }, // 75D
     // 23D: "Some sports league contracts, for short" = TW (two-way contracts)
     { cells: [[1,8],[2,8]], answer: 'TW' },                           // 23D
+    // 136A: "Alpine municipality" = BERGAN (visible in reference image)
+    { cells: [[18,2],[18,3],[18,4],[18,5],[18,6],[18,7]], answer: 'BERGAN' }, // 136A
 
     // === REFERENCE IMAGE READS (additional cells visible in other solvers' grids) ===
     // Row 0: BANJOS has 6th letter S at col 14 (13D start)
@@ -394,6 +396,16 @@ export const AI_GUESSES: Record<string, string> = (() => {
     { cells: [[22,18]], answer: 'O' },
     // Row 24: visible
     { cells: [[24,0]], answer: 'A' },
+
+    // === ADDITIONAL REFERENCE IMAGE READS (batch 2) ===
+    { cells: [[0,21]], answer: 'E' },     // 18D start / 14A position
+    { cells: [[2,15]], answer: 'P' },     // 27D start (confirmed: 75D=SNOOP ends S at 9,15)
+    { cells: [[6,17]], answer: 'S' },     // 54A start
+    { cells: [[21,12]], answer: 'R' },    // 159A position 2
+    { cells: [[22,9]], answer: 'S' },     // 167A position 1
+    { cells: [[22,11]], answer: 'E' },    // 167A position 3 (circled cell)
+    { cells: [[22,12]], answer: 'R' },    // 167A position 4
+    { cells: [[24,11]], answer: 'M' },    // 175A position 2
   ];
 
   const map: Record<string, string> = {};
