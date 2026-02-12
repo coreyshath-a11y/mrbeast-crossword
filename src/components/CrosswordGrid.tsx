@@ -68,19 +68,19 @@ export default function CrosswordGrid() {
   const [clueTexts, setClueTexts] = useState<Record<string, ClueState>>({});
   const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null);
   const [direction, setDirection] = useState<'across' | 'down'>('across');
-  const [userId, setUserId] = useState('anonymous');
   const [userName, setUserName] = useState('');
   const [userColor, setUserColor] = useState('#4ECDC4');
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'live' | 'offline'>('connecting');
   const [activeClue, setActiveClue] = useState<{ number: number; direction: 'across' | 'down' } | null>(null);
   const [filterDirection, setFilterDirection] = useState<'across' | 'down'>('across');
   const [remoteUsers, setRemoteUsers] = useState<Record<string, RemoteUser>>({});
   const [onlineCount, setOnlineCount] = useState(1);
   const gridRef = useRef<HTMLDivElement>(null);
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const channelRef = useRef<RealtimeChannel | null>(null);
+  const broadcastChannelRef = useRef<RealtimeChannel | null>(null);
+  const presenceChannelRef = useRef<RealtimeChannel | null>(null);
   const userIdRef = useRef('anonymous');
   const userNameRef = useRef('');
   const userColorRef = useRef('#4ECDC4');
@@ -97,10 +97,9 @@ export default function CrosswordGrid() {
     if (!authenticated) return;
     const id = getUserId();
     const color = getUserColor();
-    setUserId(id);
-    setUserColor(color);
     userIdRef.current = id;
     userColorRef.current = color;
+    setUserColor(color);
     const name = getUserName();
     if (!name) {
       setShowNamePrompt(true);
@@ -114,10 +113,14 @@ export default function CrosswordGrid() {
   useEffect(() => {
     if (!authenticated) return;
     const supabase = getSupabase();
-    if (!supabase) return;
+    if (!supabase) {
+      setConnectionStatus('offline');
+      return;
+    }
 
     const loadCells = async () => {
-      const { data } = await supabase.from('cells').select('*');
+      const { data, error } = await supabase.from('cells').select('*');
+      if (error) { console.error('Failed to load cells:', error); return; }
       if (data) {
         const newCells: Record<string, CellState> = {};
         data.forEach((cell: CellEntry) => {
@@ -128,7 +131,8 @@ export default function CrosswordGrid() {
     };
 
     const loadClues = async () => {
-      const { data } = await supabase.from('clues').select('*');
+      const { data, error } = await supabase.from('clues').select('*');
+      if (error) { console.error('Failed to load clues:', error); return; }
       if (data) {
         const newClues: Record<string, ClueState> = {};
         data.forEach((clue: ClueEntry) => {
@@ -142,95 +146,146 @@ export default function CrosswordGrid() {
     loadClues();
   }, [authenticated]);
 
-  // Set up Realtime: Broadcast + Presence (the fast stuff)
+  // Channel 1: postgres_changes — reliable DB sync (backbone)
+  useEffect(() => {
+    if (!authenticated) return;
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    const dbChannel = supabase
+      .channel('db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cells' }, (payload) => {
+        if (payload.new && typeof payload.new === 'object' && 'row' in payload.new) {
+          const cell = payload.new as CellEntry;
+          setCells((prev) => ({
+            ...prev,
+            [`${cell.row},${cell.col}`]: { value: cell.value, updatedBy: cell.updated_by },
+          }));
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clues' }, (payload) => {
+        if (payload.new && typeof payload.new === 'object' && 'number' in payload.new) {
+          const clue = payload.new as ClueEntry;
+          setClueTexts((prev) => ({
+            ...prev,
+            [`${clue.number}-${clue.direction}`]: { text: clue.clue_text, updatedBy: clue.updated_by },
+          }));
+        }
+      })
+      .subscribe((status, err) => {
+        console.log('DB channel status:', status, err);
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus('live');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('DB channel error:', err);
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(dbChannel);
+    };
+  }, [authenticated]);
+
+  // Channel 2: Broadcast — instant peer-to-peer cell/clue updates
   useEffect(() => {
     if (!authenticated || !userName) return;
     const supabase = getSupabase();
     if (!supabase) return;
 
-    const channel = supabase.channel('puzzle-room', {
+    const bChannel = supabase.channel('puzzle-broadcast');
+
+    bChannel
+      .on('broadcast', { event: 'cell' }, ({ payload }) => {
+        if (payload.senderId === userIdRef.current) return; // skip own echoes
+        setCells((prev) => ({
+          ...prev,
+          [`${payload.row},${payload.col}`]: { value: payload.value, updatedBy: payload.updatedBy },
+        }));
+      })
+      .on('broadcast', { event: 'clue' }, ({ payload }) => {
+        if (payload.senderId === userIdRef.current) return;
+        setClueTexts((prev) => ({
+          ...prev,
+          [`${payload.number}-${payload.dir}`]: { text: payload.text, updatedBy: payload.updatedBy },
+        }));
+      })
+      .subscribe((status, err) => {
+        console.log('Broadcast channel status:', status, err);
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus('live');
+        }
+      });
+
+    broadcastChannelRef.current = bChannel;
+
+    return () => {
+      supabase.removeChannel(bChannel);
+      broadcastChannelRef.current = null;
+    };
+  }, [authenticated, userName]);
+
+  // Channel 3: Presence — live cursor tracking
+  useEffect(() => {
+    if (!authenticated || !userName) return;
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    const pChannel = supabase.channel('puzzle-presence', {
       config: { presence: { key: userIdRef.current } },
     });
 
-    // Listen for broadcast cell updates (instant, no DB round-trip)
-    channel.on('broadcast', { event: 'cell-update' }, (payload) => {
-      const { row, col, value, updatedBy } = payload.payload;
-      setCells((prev) => ({
-        ...prev,
-        [`${row},${col}`]: { value, updatedBy },
-      }));
-    });
-
-    // Listen for broadcast clue updates
-    channel.on('broadcast', { event: 'clue-update' }, (payload) => {
-      const { number, dir, text, updatedBy } = payload.payload;
-      setClueTexts((prev) => ({
-        ...prev,
-        [`${number}-${dir}`]: { text, updatedBy },
-      }));
-    });
-
-    // Presence: track who's online and where their cursor is
-    channel.on('presence', { event: 'sync' }, () => {
-      const state = channel.presenceState();
-      const users: Record<string, RemoteUser> = {};
-      let count = 0;
-      Object.entries(state).forEach(([key, presences]) => {
-        count++;
-        if (key === userIdRef.current) return; // skip self
-        const p = (presences as unknown as RemoteUser[])[0];
-        if (p) {
-          users[key] = p;
+    pChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = pChannel.presenceState();
+        const users: Record<string, RemoteUser> = {};
+        let count = 0;
+        Object.entries(state).forEach(([key, presences]) => {
+          count++;
+          if (key === userIdRef.current) return;
+          const arr = presences as unknown as RemoteUser[];
+          if (arr[0]) users[key] = arr[0];
+        });
+        setRemoteUsers(users);
+        setOnlineCount(count);
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        if (key === userIdRef.current) return;
+        const arr = newPresences as unknown as RemoteUser[];
+        if (arr[0]) setRemoteUsers((prev) => ({ ...prev, [key]: arr[0] }));
+      })
+      .on('presence', { event: 'leave' }, ({ key }) => {
+        setRemoteUsers((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+      })
+      .subscribe(async (status, err) => {
+        console.log('Presence channel status:', status, err);
+        if (status === 'SUBSCRIBED') {
+          await pChannel.track({
+            userId: userIdRef.current,
+            name: userNameRef.current,
+            color: userColorRef.current,
+            row: -1,
+            col: -1,
+            direction: 'across' as const,
+          });
         }
       });
-      setRemoteUsers(users);
-      setOnlineCount(count);
-    });
 
-    channel.on('presence', { event: 'join' }, ({ key, newPresences }) => {
-      if (key === userIdRef.current) return;
-      const p = (newPresences as unknown as RemoteUser[])[0];
-      if (p) {
-        setRemoteUsers((prev) => ({ ...prev, [key]: p }));
-      }
-      setOnlineCount((c) => c + 1);
-    });
-
-    channel.on('presence', { event: 'leave' }, ({ key }) => {
-      setRemoteUsers((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-      setOnlineCount((c) => Math.max(1, c - 1));
-    });
-
-    channel.subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        setConnected(true);
-        await channel.track({
-          userId: userIdRef.current,
-          name: userNameRef.current,
-          color: userColorRef.current,
-          row: -1,
-          col: -1,
-          direction: 'across',
-        });
-      }
-    });
-
-    channelRef.current = channel;
+    presenceChannelRef.current = pChannel;
 
     return () => {
-      supabase.removeChannel(channel);
-      channelRef.current = null;
+      supabase.removeChannel(pChannel);
+      presenceChannelRef.current = null;
     };
   }, [authenticated, userName]);
 
   // Broadcast cursor position when it changes
   useEffect(() => {
-    if (!channelRef.current || !selectedCell) return;
-    channelRef.current.track({
+    if (!presenceChannelRef.current || !selectedCell) return;
+    presenceChannelRef.current.track({
       userId: userIdRef.current,
       name: userNameRef.current,
       color: userColorRef.current,
@@ -240,36 +295,38 @@ export default function CrosswordGrid() {
     });
   }, [selectedCell, direction]);
 
-  // Save cell: broadcast instantly + persist to DB in background
-  const saveCell = useCallback(async (row: number, col: number, value: string) => {
+  // Save cell: broadcast instantly + persist to DB
+  const saveCell = useCallback((row: number, col: number, value: string) => {
     const displayName = userNameRef.current || userIdRef.current;
     const upperVal = value.toUpperCase();
 
     // Broadcast instantly to all peers
-    channelRef.current?.send({
+    broadcastChannelRef.current?.send({
       type: 'broadcast',
-      event: 'cell-update',
-      payload: { row, col, value: upperVal, updatedBy: displayName },
+      event: 'cell',
+      payload: { row, col, value: upperVal, updatedBy: displayName, senderId: userIdRef.current },
     });
 
-    // Persist to DB in background (no await needed for UX)
+    // Persist to DB (triggers postgres_changes for anyone not on broadcast)
     const supabase = getSupabase();
     if (supabase) {
       supabase.from('cells').upsert(
         { row, col, value: upperVal, updated_by: displayName, updated_at: new Date().toISOString() },
         { onConflict: 'row,col' }
-      ).then(() => {});
+      ).then(({ error }) => {
+        if (error) console.error('Cell save error:', error);
+      });
     }
   }, []);
 
   // Save clue: broadcast + persist
-  const saveClue = useCallback(async (number: number, dir: 'across' | 'down', text: string) => {
+  const saveClue = useCallback((number: number, dir: 'across' | 'down', text: string) => {
     const displayName = userNameRef.current || userIdRef.current;
 
-    channelRef.current?.send({
+    broadcastChannelRef.current?.send({
       type: 'broadcast',
-      event: 'clue-update',
-      payload: { number, dir, text, updatedBy: displayName },
+      event: 'clue',
+      payload: { number, dir, text, updatedBy: displayName, senderId: userIdRef.current },
     });
 
     const supabase = getSupabase();
@@ -277,7 +334,9 @@ export default function CrosswordGrid() {
       supabase.from('clues').upsert(
         { number, direction: dir, clue_text: text, updated_by: displayName, updated_at: new Date().toISOString() },
         { onConflict: 'number,direction' }
-      ).then(() => {});
+      ).then(({ error }) => {
+        if (error) console.error('Clue save error:', error);
+      });
     }
   }, []);
 
@@ -294,7 +353,6 @@ export default function CrosswordGrid() {
     return new Set(clue.cells.map(([r, c]) => `${r},${c}`));
   }, [selectedCell, direction, findClueForCell]);
 
-  // Build a map of remote user cursors: cellKey -> RemoteUser
   const remoteCursorMap = useCallback((): Record<string, RemoteUser> => {
     const map: Record<string, RemoteUser> = {};
     Object.values(remoteUsers).forEach((u) => {
@@ -450,12 +508,12 @@ export default function CrosswordGrid() {
   return (
     <div className="flex flex-col lg:flex-row gap-4 p-2 sm:p-4 max-w-[1400px] mx-auto">
       <div className="w-full lg:hidden">
-        <Header connected={connected} userName={userName} userColor={userColor} onlineCount={onlineCount} remoteUsers={Object.values(remoteUsers)} />
+        <Header connectionStatus={connectionStatus} userName={userName} userColor={userColor} onlineCount={onlineCount} remoteUsers={Object.values(remoteUsers)} />
       </div>
 
       <div className="flex flex-col items-center flex-shrink-0">
         <div className="hidden lg:block w-full mb-3">
-          <Header connected={connected} userName={userName} userColor={userColor} onlineCount={onlineCount} remoteUsers={Object.values(remoteUsers)} />
+          <Header connectionStatus={connectionStatus} userName={userName} userColor={userColor} onlineCount={onlineCount} remoteUsers={Object.values(remoteUsers)} />
         </div>
 
         {activeClue && (
@@ -499,13 +557,12 @@ export default function CrosswordGrid() {
                     className={`relative border flex items-center justify-center cursor-pointer outline-none
                       ${isSelected ? 'bg-yellow-300 z-10' : ''}
                       ${isHighlighted && !isSelected ? 'bg-blue-100' : ''}
-                      ${!isSelected && !isHighlighted && !remoteCursor ? 'bg-white border-gray-300' : ''}
-                      ${!isSelected && remoteCursor ? 'bg-white' : ''}
+                      ${!isSelected && !isHighlighted ? 'bg-white' : ''}
+                      ${!remoteCursor && !isSelected ? 'border-gray-300' : ''}
                     `}
                     style={{
                       width: CELL_SIZE,
                       height: CELL_SIZE,
-                      // Remote cursor: colored border
                       ...(remoteCursor && !isSelected ? {
                         boxShadow: `inset 0 0 0 2px ${remoteCursor.color}`,
                         borderColor: remoteCursor.color,
@@ -519,7 +576,6 @@ export default function CrosswordGrid() {
                     tabIndex={0}
                     onKeyDown={(e) => handleKeyDown(e, row, col)}
                   >
-                    {/* Remote user name tag */}
                     {remoteCursor && !isSelected && (
                       <div
                         className="absolute -top-4 left-0 text-white text-[8px] font-bold px-1 rounded-t whitespace-nowrap z-20 pointer-events-none"
@@ -564,13 +620,13 @@ export default function CrosswordGrid() {
             className={`px-3 py-1 rounded font-medium transition-colors ${direction === 'across' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
             onClick={() => setDirection('across')}
           >
-            Across →
+            Across
           </button>
           <button
             className={`px-3 py-1 rounded font-medium transition-colors ${direction === 'down' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
             onClick={() => setDirection('down')}
           >
-            Down ↓
+            Down
           </button>
           <span className="text-gray-400 text-xs ml-2">Tab/Space to toggle</span>
         </div>
@@ -638,9 +694,12 @@ export default function CrosswordGrid() {
 
 // --- Sub-components ---
 
-function Header({ connected, userName, userColor, onlineCount, remoteUsers }: {
-  connected: boolean; userName: string; userColor: string; onlineCount: number; remoteUsers: RemoteUser[];
+function Header({ connectionStatus, userName, userColor, onlineCount, remoteUsers }: {
+  connectionStatus: 'connecting' | 'live' | 'offline'; userName: string; userColor: string; onlineCount: number; remoteUsers: RemoteUser[];
 }) {
+  const statusColor = connectionStatus === 'live' ? '#22c55e' : connectionStatus === 'connecting' ? '#f59e0b' : '#ef4444';
+  const statusText = connectionStatus === 'live' ? `${onlineCount} online` : connectionStatus === 'connecting' ? 'Connecting...' : 'Offline';
+
   return (
     <div className="flex items-center justify-between mb-2 px-1">
       <div>
@@ -651,12 +710,11 @@ function Header({ connected, userName, userColor, onlineCount, remoteUsers }: {
         <div className="flex items-center gap-1">
           <div
             className="w-2.5 h-2.5 rounded-full"
-            style={{ backgroundColor: connected ? '#22c55e' : '#ef4444', animation: connected ? 'none' : 'pulse 2s infinite' }}
-            title={connected ? 'Connected — real-time sync active' : 'Connecting...'}
+            style={{ backgroundColor: statusColor }}
+            title={statusText}
           />
-          <span className="text-xs text-gray-500">{connected ? `${onlineCount} online` : 'Connecting...'}</span>
+          <span className="text-xs text-gray-500">{statusText}</span>
         </div>
-        {/* Remote user avatars */}
         <div className="flex -space-x-1.5">
           {remoteUsers.slice(0, 5).map((u) => (
             <div
@@ -674,7 +732,6 @@ function Header({ connected, userName, userColor, onlineCount, remoteUsers }: {
             </div>
           )}
         </div>
-        {/* Self avatar */}
         <div
           className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm ring-2 ring-white"
           style={{ backgroundColor: userColor }}
