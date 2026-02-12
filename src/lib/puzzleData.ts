@@ -406,6 +406,20 @@ export const AI_GUESSES: Record<string, string> = (() => {
     { cells: [[22,11]], answer: 'E' },    // 167A position 3 (circled cell)
     { cells: [[22,12]], answer: 'R' },    // 167A position 4
     { cells: [[24,11]], answer: 'M' },    // 175A position 2
+
+    // === BROADCAST discovery (batch 3) ===
+    // Column 22 reads B-R-O-A-D-C-A-S-T from rows 16-24
+    // "File productions" (124D) = BROADCAST (to "file" a story = broadcast it)
+    // Confirmed: OPOSSUM gives S at (23,22), B/R already known at (16,22)/(17,22)
+    { cells: [[18,22]], answer: 'O' },    // BROADCAST pos 3 / 138A
+    { cells: [[19,22]], answer: 'A' },    // BROADCAST pos 4 / 147A
+    { cells: [[20,22]], answer: 'D' },    // BROADCAST pos 5 / 155A
+    { cells: [[21,22]], answer: 'C' },    // BROADCAST pos 6 / 164A
+    { cells: [[22,22]], answer: 'A' },    // BROADCAST pos 7 / 167A
+    { cells: [[24,22]], answer: 'T' },    // BROADCAST pos 9 / 176A
+    // Additional cells from image analysis
+    { cells: [[14,18]], answer: 'G' },    // 111A position / 104D
+    { cells: [[15,19]], answer: 'U' },    // 117A / 112D area
   ];
 
   const map: Record<string, string> = {};
