@@ -325,6 +325,13 @@ export const AI_GUESSES: Record<string, string> = (() => {
     { cells: [[14,7],[15,7],[16,7]], answer: 'STP' },                  // 108D "Motor oil brand"
     { cells: [[19,1],[20,1],[21,1],[22,1],[23,1],[24,1]], answer: 'LADOGA' }, // 142D "Largest European lake"
     { cells: [[22,14],[23,14],[24,14]], answer: 'REI' },               // 169D "NW-based retailer"
+    // 65D: confirmed by 3 crossings: SANTA T(8,7), BOSTON O(9,7), DHANI H(11,7)
+    { cells: [[8,7],[9,7],[10,7],[11,7]], answer: 'TOSH' },           // 65D (theme, "nonsense")
+    // 75D: "Host of Christmas Holiday Halftime Party" = SNOOPY (Peanuts)
+    // Confirmed: KYLIAN N(10,15), reference P(13,15), derives O(11,15), O(12,15), Y(14,15)
+    { cells: [[9,15],[10,15],[11,15],[12,15],[13,15],[14,15]], answer: 'SNOOPY' }, // 75D
+    // 23D: "Some sports league contracts, for short" = TW (two-way contracts)
+    { cells: [[1,8],[2,8]], answer: 'TW' },                           // 23D
 
     // === REFERENCE IMAGE READS (additional cells visible in other solvers' grids) ===
     // Row 0: BANJOS has 6th letter S at col 14 (13D start)
