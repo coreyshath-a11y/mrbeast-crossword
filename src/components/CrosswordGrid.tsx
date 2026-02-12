@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { PUZZLE_GRID, GRID_SIZE, CIRCLED_CELLS, CLUES, isBlack, getCellNumber } from '@/lib/puzzleData';
+import { GRID_SIZE, CIRCLED_CELLS, CLUES, isBlack, getCellNumber } from '@/lib/puzzleData';
 import { getSupabase, CellEntry, ClueEntry } from '@/lib/supabase';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 const CELL_SIZE = 28;
 const NUMBER_FONT = 8;
@@ -18,12 +19,23 @@ interface ClueState {
   updatedBy: string;
 }
 
+interface RemoteUser {
+  userId: string;
+  name: string;
+  color: string;
+  row: number;
+  col: number;
+  direction: 'across' | 'down';
+}
+
+const USER_COLORS = [
+  '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+  '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
+  '#F1948A', '#82E0AA', '#F8C471', '#AED6F1', '#D7BDE2',
+];
+
 function getRandomColor() {
-  const colors = [
-    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-    '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
-  ];
-  return colors[Math.floor(Math.random() * colors.length)];
+  return USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
 }
 
 function getUserId(): string {
@@ -64,8 +76,14 @@ export default function CrosswordGrid() {
   const [connected, setConnected] = useState(false);
   const [activeClue, setActiveClue] = useState<{ number: number; direction: 'across' | 'down' } | null>(null);
   const [filterDirection, setFilterDirection] = useState<'across' | 'down'>('across');
+  const [remoteUsers, setRemoteUsers] = useState<Record<string, RemoteUser>>({});
+  const [onlineCount, setOnlineCount] = useState(1);
   const gridRef = useRef<HTMLDivElement>(null);
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const userIdRef = useRef('anonymous');
+  const userNameRef = useRef('');
+  const userColorRef = useRef('#4ECDC4');
 
   // Check if already authenticated
   useEffect(() => {
@@ -77,18 +95,24 @@ export default function CrosswordGrid() {
   // Initialize user (only after auth)
   useEffect(() => {
     if (!authenticated) return;
-    setUserId(getUserId());
-    setUserColor(getUserColor());
+    const id = getUserId();
+    const color = getUserColor();
+    setUserId(id);
+    setUserColor(color);
+    userIdRef.current = id;
+    userColorRef.current = color;
     const name = getUserName();
     if (!name) {
       setShowNamePrompt(true);
     } else {
       setUserName(name);
+      userNameRef.current = name;
     }
   }, [authenticated]);
 
-  // Load initial data and subscribe to realtime
+  // Load initial data from DB
   useEffect(() => {
+    if (!authenticated) return;
     const supabase = getSupabase();
     if (!supabase) return;
 
@@ -116,60 +140,146 @@ export default function CrosswordGrid() {
 
     loadCells();
     loadClues();
+  }, [authenticated]);
 
-    const cellChannel = supabase
-      .channel('cells-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cells' }, (payload) => {
-        if (payload.new && typeof payload.new === 'object' && 'row' in payload.new) {
-          const cell = payload.new as CellEntry;
-          setCells((prev) => ({
-            ...prev,
-            [`${cell.row},${cell.col}`]: { value: cell.value, updatedBy: cell.updated_by },
-          }));
+  // Set up Realtime: Broadcast + Presence (the fast stuff)
+  useEffect(() => {
+    if (!authenticated || !userName) return;
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    const channel = supabase.channel('puzzle-room', {
+      config: { presence: { key: userIdRef.current } },
+    });
+
+    // Listen for broadcast cell updates (instant, no DB round-trip)
+    channel.on('broadcast', { event: 'cell-update' }, (payload) => {
+      const { row, col, value, updatedBy } = payload.payload;
+      setCells((prev) => ({
+        ...prev,
+        [`${row},${col}`]: { value, updatedBy },
+      }));
+    });
+
+    // Listen for broadcast clue updates
+    channel.on('broadcast', { event: 'clue-update' }, (payload) => {
+      const { number, dir, text, updatedBy } = payload.payload;
+      setClueTexts((prev) => ({
+        ...prev,
+        [`${number}-${dir}`]: { text, updatedBy },
+      }));
+    });
+
+    // Presence: track who's online and where their cursor is
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      const users: Record<string, RemoteUser> = {};
+      let count = 0;
+      Object.entries(state).forEach(([key, presences]) => {
+        count++;
+        if (key === userIdRef.current) return; // skip self
+        const p = (presences as unknown as RemoteUser[])[0];
+        if (p) {
+          users[key] = p;
         }
-      })
-      .subscribe((status) => {
-        setConnected(status === 'SUBSCRIBED');
       });
+      setRemoteUsers(users);
+      setOnlineCount(count);
+    });
 
-    const clueChannel = supabase
-      .channel('clues-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clues' }, (payload) => {
-        if (payload.new && typeof payload.new === 'object' && 'number' in payload.new) {
-          const clue = payload.new as ClueEntry;
-          setClueTexts((prev) => ({
-            ...prev,
-            [`${clue.number}-${clue.direction}`]: { text: clue.clue_text, updatedBy: clue.updated_by },
-          }));
-        }
-      })
-      .subscribe();
+    channel.on('presence', { event: 'join' }, ({ key, newPresences }) => {
+      if (key === userIdRef.current) return;
+      const p = (newPresences as unknown as RemoteUser[])[0];
+      if (p) {
+        setRemoteUsers((prev) => ({ ...prev, [key]: p }));
+      }
+      setOnlineCount((c) => c + 1);
+    });
+
+    channel.on('presence', { event: 'leave' }, ({ key }) => {
+      setRemoteUsers((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      setOnlineCount((c) => Math.max(1, c - 1));
+    });
+
+    channel.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        setConnected(true);
+        await channel.track({
+          userId: userIdRef.current,
+          name: userNameRef.current,
+          color: userColorRef.current,
+          row: -1,
+          col: -1,
+          direction: 'across',
+        });
+      }
+    });
+
+    channelRef.current = channel;
 
     return () => {
-      supabase.removeChannel(cellChannel);
-      supabase.removeChannel(clueChannel);
+      supabase.removeChannel(channel);
+      channelRef.current = null;
     };
+  }, [authenticated, userName]);
+
+  // Broadcast cursor position when it changes
+  useEffect(() => {
+    if (!channelRef.current || !selectedCell) return;
+    channelRef.current.track({
+      userId: userIdRef.current,
+      name: userNameRef.current,
+      color: userColorRef.current,
+      row: selectedCell[0],
+      col: selectedCell[1],
+      direction,
+    });
+  }, [selectedCell, direction]);
+
+  // Save cell: broadcast instantly + persist to DB in background
+  const saveCell = useCallback(async (row: number, col: number, value: string) => {
+    const displayName = userNameRef.current || userIdRef.current;
+    const upperVal = value.toUpperCase();
+
+    // Broadcast instantly to all peers
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'cell-update',
+      payload: { row, col, value: upperVal, updatedBy: displayName },
+    });
+
+    // Persist to DB in background (no await needed for UX)
+    const supabase = getSupabase();
+    if (supabase) {
+      supabase.from('cells').upsert(
+        { row, col, value: upperVal, updated_by: displayName, updated_at: new Date().toISOString() },
+        { onConflict: 'row,col' }
+      ).then(() => {});
+    }
   }, []);
 
-  const saveCell = useCallback(async (row: number, col: number, value: string) => {
-    const supabase = getSupabase();
-    if (!supabase) return;
-    const displayName = userName || userId;
-    await supabase.from('cells').upsert(
-      { row, col, value: value.toUpperCase(), updated_by: displayName, updated_at: new Date().toISOString() },
-      { onConflict: 'row,col' }
-    );
-  }, [userId, userName]);
-
+  // Save clue: broadcast + persist
   const saveClue = useCallback(async (number: number, dir: 'across' | 'down', text: string) => {
+    const displayName = userNameRef.current || userIdRef.current;
+
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'clue-update',
+      payload: { number, dir, text, updatedBy: displayName },
+    });
+
     const supabase = getSupabase();
-    if (!supabase) return;
-    const displayName = userName || userId;
-    await supabase.from('clues').upsert(
-      { number, direction: dir, clue_text: text, updated_by: displayName, updated_at: new Date().toISOString() },
-      { onConflict: 'number,direction' }
-    );
-  }, [userId, userName]);
+    if (supabase) {
+      supabase.from('clues').upsert(
+        { number, direction: dir, clue_text: text, updated_by: displayName, updated_at: new Date().toISOString() },
+        { onConflict: 'number,direction' }
+      ).then(() => {});
+    }
+  }, []);
 
   const findClueForCell = useCallback((row: number, col: number, dir: 'across' | 'down') => {
     return CLUES.find(
@@ -184,6 +294,17 @@ export default function CrosswordGrid() {
     return new Set(clue.cells.map(([r, c]) => `${r},${c}`));
   }, [selectedCell, direction, findClueForCell]);
 
+  // Build a map of remote user cursors: cellKey -> RemoteUser
+  const remoteCursorMap = useCallback((): Record<string, RemoteUser> => {
+    const map: Record<string, RemoteUser> = {};
+    Object.values(remoteUsers).forEach((u) => {
+      if (u.row >= 0 && u.col >= 0) {
+        map[`${u.row},${u.col}`] = u;
+      }
+    });
+    return map;
+  }, [remoteUsers]);
+
   const handleCellClick = (row: number, col: number) => {
     if (isBlack(row, col)) return;
     if (selectedCell && selectedCell[0] === row && selectedCell[1] === col) {
@@ -193,7 +314,6 @@ export default function CrosswordGrid() {
     }
   };
 
-  // Focus the cell div when selected
   useEffect(() => {
     if (selectedCell) {
       const key = `${selectedCell[0]},${selectedCell[1]}`;
@@ -243,35 +363,28 @@ export default function CrosswordGrid() {
     if (key === 'BACKSPACE' || key === 'DELETE') {
       e.preventDefault();
       const cellKey = `${row},${col}`;
-      setCells((prev) => ({ ...prev, [cellKey]: { value: '', updatedBy: userName || userId } }));
+      const displayName = userNameRef.current || userIdRef.current;
+      setCells((prev) => ({ ...prev, [cellKey]: { value: '', updatedBy: displayName } }));
       saveCell(row, col, '');
       moveToPrevCell(row, col);
       return;
     }
-    if (key === 'TAB') {
-      e.preventDefault();
-      setDirection((d) => (d === 'across' ? 'down' : 'across'));
-      return;
-    }
+    if (key === 'TAB') { e.preventDefault(); setDirection((d) => (d === 'across' ? 'down' : 'across')); return; }
     if (key === 'ARROWUP') { e.preventDefault(); moveToCell(row - 1, col, 'up'); return; }
     if (key === 'ARROWDOWN') { e.preventDefault(); moveToCell(row + 1, col, 'down'); return; }
     if (key === 'ARROWLEFT') { e.preventDefault(); moveToCell(row, col - 1, 'left'); return; }
     if (key === 'ARROWRIGHT') { e.preventDefault(); moveToCell(row, col + 1, 'right'); return; }
-    if (key === ' ') {
-      e.preventDefault();
-      setDirection((d) => (d === 'across' ? 'down' : 'across'));
-      return;
-    }
+    if (key === ' ') { e.preventDefault(); setDirection((d) => (d === 'across' ? 'down' : 'across')); return; }
     if (/^[A-Z]$/.test(key)) {
       e.preventDefault();
       const cellKey = `${row},${col}`;
-      setCells((prev) => ({ ...prev, [cellKey]: { value: key, updatedBy: userName || userId } }));
+      const displayName = userNameRef.current || userIdRef.current;
+      setCells((prev) => ({ ...prev, [cellKey]: { value: key, updatedBy: displayName } }));
       saveCell(row, col, key);
       moveToNextCell(row, col);
     }
-  }, [direction, userName, userId, saveCell, moveToNextCell, moveToPrevCell, moveToCell]);
+  }, [direction, saveCell, moveToNextCell, moveToPrevCell, moveToCell]);
 
-  // Update active clue when selection changes
   useEffect(() => {
     if (selectedCell) {
       const clue = findClueForCell(selectedCell[0], selectedCell[1], direction);
@@ -283,16 +396,19 @@ export default function CrosswordGrid() {
   }, [selectedCell, direction, findClueForCell]);
 
   const highlightedCells = getHighlightedCells();
+  const cursors = remoteCursorMap();
 
   const handleClueEdit = (number: number, dir: 'across' | 'down', text: string) => {
     const k = `${number}-${dir}`;
-    setClueTexts((prev) => ({ ...prev, [k]: { text, updatedBy: userName || userId } }));
+    const displayName = userNameRef.current || userIdRef.current;
+    setClueTexts((prev) => ({ ...prev, [k]: { text, updatedBy: displayName } }));
     saveClue(number, dir, text);
   };
 
   const handleNameSubmit = (name: string) => {
     if (typeof window !== 'undefined') localStorage.setItem('crossword-user-name', name);
     setUserName(name);
+    userNameRef.current = name;
     setShowNamePrompt(false);
   };
 
@@ -316,6 +432,8 @@ export default function CrosswordGrid() {
     }
   };
 
+  // --- Render gates ---
+
   if (!authenticated) {
     return (
       <PasswordPrompt onSuccess={() => {
@@ -332,12 +450,12 @@ export default function CrosswordGrid() {
   return (
     <div className="flex flex-col lg:flex-row gap-4 p-2 sm:p-4 max-w-[1400px] mx-auto">
       <div className="w-full lg:hidden">
-        <Header connected={connected} userName={userName} userColor={userColor} />
+        <Header connected={connected} userName={userName} userColor={userColor} onlineCount={onlineCount} remoteUsers={Object.values(remoteUsers)} />
       </div>
 
       <div className="flex flex-col items-center flex-shrink-0">
         <div className="hidden lg:block w-full mb-3">
-          <Header connected={connected} userName={userName} userColor={userColor} />
+          <Header connected={connected} userName={userName} userColor={userColor} onlineCount={onlineCount} remoteUsers={Object.values(remoteUsers)} />
         </div>
 
         {activeClue && (
@@ -366,6 +484,7 @@ export default function CrosswordGrid() {
                 const cellValue = cells[cellKey]?.value || '';
                 const isSelected = selectedCell?.[0] === row && selectedCell?.[1] === col;
                 const isHighlighted = highlightedCells.has(cellKey);
+                const remoteCursor = cursors[cellKey];
 
                 if (black) {
                   return (
@@ -377,16 +496,39 @@ export default function CrosswordGrid() {
                   <div
                     key={cellKey}
                     ref={(el) => { cellRefs.current[cellKey] = el; }}
-                    className={`relative border border-gray-300 flex items-center justify-center cursor-pointer outline-none
-                      ${isSelected ? 'bg-yellow-300 ring-2 ring-blue-500 ring-inset' : ''}
+                    className={`relative border flex items-center justify-center cursor-pointer outline-none
+                      ${isSelected ? 'bg-yellow-300 z-10' : ''}
                       ${isHighlighted && !isSelected ? 'bg-blue-100' : ''}
-                      ${!isSelected && !isHighlighted ? 'bg-white' : ''}
+                      ${!isSelected && !isHighlighted && !remoteCursor ? 'bg-white border-gray-300' : ''}
+                      ${!isSelected && remoteCursor ? 'bg-white' : ''}
                     `}
-                    style={{ width: CELL_SIZE, height: CELL_SIZE }}
+                    style={{
+                      width: CELL_SIZE,
+                      height: CELL_SIZE,
+                      // Remote cursor: colored border
+                      ...(remoteCursor && !isSelected ? {
+                        boxShadow: `inset 0 0 0 2px ${remoteCursor.color}`,
+                        borderColor: remoteCursor.color,
+                      } : {}),
+                      ...(isSelected ? {
+                        boxShadow: 'inset 0 0 0 2px #3b82f6',
+                        borderColor: '#3b82f6',
+                      } : {}),
+                    }}
                     onClick={() => handleCellClick(row, col)}
                     tabIndex={0}
                     onKeyDown={(e) => handleKeyDown(e, row, col)}
                   >
+                    {/* Remote user name tag */}
+                    {remoteCursor && !isSelected && (
+                      <div
+                        className="absolute -top-4 left-0 text-white text-[8px] font-bold px-1 rounded-t whitespace-nowrap z-20 pointer-events-none"
+                        style={{ backgroundColor: remoteCursor.color }}
+                      >
+                        {remoteCursor.name}
+                      </div>
+                    )}
+
                     {circled && (
                       <div className="absolute inset-0 pointer-events-none" style={{ margin: '1px' }}>
                         <svg viewBox="0 0 26 26" className="w-full h-full">
@@ -494,7 +636,11 @@ export default function CrosswordGrid() {
   );
 }
 
-function Header({ connected, userName, userColor }: { connected: boolean; userName: string; userColor: string }) {
+// --- Sub-components ---
+
+function Header({ connected, userName, userColor, onlineCount, remoteUsers }: {
+  connected: boolean; userName: string; userColor: string; onlineCount: number; remoteUsers: RemoteUser[];
+}) {
   return (
     <div className="flex items-center justify-between mb-2 px-1">
       <div>
@@ -504,16 +650,35 @@ function Header({ connected, userName, userColor }: { connected: boolean; userNa
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-1">
           <div
-            className="w-2.5 h-2.5 rounded-full animate-pulse"
-            style={{ backgroundColor: connected ? '#22c55e' : '#ef4444' }}
-            title={connected ? 'Connected — real-time sync active' : 'Offline — changes saved locally'}
+            className="w-2.5 h-2.5 rounded-full"
+            style={{ backgroundColor: connected ? '#22c55e' : '#ef4444', animation: connected ? 'none' : 'pulse 2s infinite' }}
+            title={connected ? 'Connected — real-time sync active' : 'Connecting...'}
           />
-          <span className="text-xs text-gray-500">{connected ? 'Live' : 'Local'}</span>
+          <span className="text-xs text-gray-500">{connected ? `${onlineCount} online` : 'Connecting...'}</span>
         </div>
+        {/* Remote user avatars */}
+        <div className="flex -space-x-1.5">
+          {remoteUsers.slice(0, 5).map((u) => (
+            <div
+              key={u.userId}
+              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold border-2 border-white"
+              style={{ backgroundColor: u.color }}
+              title={u.name}
+            >
+              {u.name.charAt(0).toUpperCase()}
+            </div>
+          ))}
+          {remoteUsers.length > 5 && (
+            <div className="w-6 h-6 rounded-full flex items-center justify-center text-gray-600 text-[10px] font-bold bg-gray-200 border-2 border-white">
+              +{remoteUsers.length - 5}
+            </div>
+          )}
+        </div>
+        {/* Self avatar */}
         <div
-          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm"
+          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm ring-2 ring-white"
           style={{ backgroundColor: userColor }}
-          title={userName}
+          title={`${userName} (you)`}
         >
           {userName ? userName.charAt(0).toUpperCase() : '?'}
         </div>
