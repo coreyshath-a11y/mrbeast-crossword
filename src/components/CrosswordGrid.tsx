@@ -6,6 +6,7 @@ import { getSupabase, CellEntry, ClueEntry } from '@/lib/supabase';
 
 const CELL_SIZE = 28;
 const NUMBER_FONT = 8;
+const PUZZLE_PASSWORD = 'ThreeMusketeers';
 
 interface CellState {
   value: string;
@@ -59,14 +60,23 @@ export default function CrosswordGrid() {
   const [userName, setUserName] = useState('');
   const [userColor, setUserColor] = useState('#4ECDC4');
   const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
   const [connected, setConnected] = useState(false);
   const [activeClue, setActiveClue] = useState<{ number: number; direction: 'across' | 'down' } | null>(null);
   const [filterDirection, setFilterDirection] = useState<'across' | 'down'>('across');
   const gridRef = useRef<HTMLDivElement>(null);
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // Initialize user
+  // Check if already authenticated
   useEffect(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('crossword-auth') === 'true') {
+      setAuthenticated(true);
+    }
+  }, []);
+
+  // Initialize user (only after auth)
+  useEffect(() => {
+    if (!authenticated) return;
     setUserId(getUserId());
     setUserColor(getUserColor());
     const name = getUserName();
@@ -75,7 +85,7 @@ export default function CrosswordGrid() {
     } else {
       setUserName(name);
     }
-  }, []);
+  }, [authenticated]);
 
   // Load initial data and subscribe to realtime
   useEffect(() => {
@@ -306,6 +316,15 @@ export default function CrosswordGrid() {
     }
   };
 
+  if (!authenticated) {
+    return (
+      <PasswordPrompt onSuccess={() => {
+        if (typeof window !== 'undefined') localStorage.setItem('crossword-auth', 'true');
+        setAuthenticated(true);
+      }} />
+    );
+  }
+
   if (showNamePrompt) {
     return <NamePrompt onSubmit={handleNameSubmit} />;
   }
@@ -498,6 +517,46 @@ function Header({ connected, userName, userColor }: { connected: boolean; userNa
         >
           {userName ? userName.charAt(0).toUpperCase() : '?'}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PasswordPrompt({ onSuccess }: { onSuccess: () => void }) {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(false);
+
+  const handleSubmit = () => {
+    if (password === PUZZLE_PASSWORD) {
+      onSuccess();
+    } else {
+      setError(true);
+      setTimeout(() => setError(false), 1500);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+        <h2 className="text-xl font-bold mb-1 text-gray-900">Crossword Access</h2>
+        <p className="text-gray-600 text-sm mb-4">Enter the password to join the puzzle.</p>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => { setPassword(e.target.value); setError(false); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+          placeholder="Password..."
+          className={`w-full border rounded-lg px-3 py-2 mb-3 focus:outline-none focus:ring-2 text-gray-900 ${error ? 'border-red-500 focus:ring-red-500' : 'focus:ring-blue-500'}`}
+          autoFocus
+        />
+        {error && <p className="text-red-500 text-sm mb-2">Wrong password. Try again.</p>}
+        <button
+          className="w-full bg-blue-600 text-white rounded-lg py-2 font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          onClick={handleSubmit}
+          disabled={!password}
+        >
+          Enter
+        </button>
       </div>
     </div>
   );
