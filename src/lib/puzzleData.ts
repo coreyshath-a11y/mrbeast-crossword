@@ -291,71 +291,102 @@ export const CLUES: ClueData[] = [
 // Compiled from clue analysis, crossing constraints, and reference data
 export const AI_GUESSES: Record<string, string> = (() => {
   const answers: { cells: [number, number][]; answer: string }[] = [
-    // === ACROSS ===
-    // 8A: "Players on T-Swift's 'Mean'" = BANJO (5 cells)
-    { cells: [[0,9],[0,10],[0,11],[0,12],[0,13]], answer: 'BANJO' },
-    // 24A: "One collapsed in 1980 in Washington" = ST HELENS
-    { cells: [[1,17],[1,18],[1,19],[1,20],[1,21],[1,22],[1,23],[1,24]], answer: 'STHELENS' },
-    // 30A: "Words heard in Shibuya" = SUGOI
-    { cells: [[3,5],[3,6],[3,7],[3,8],[3,9]], answer: 'SUGOI' },
-    // 35A: "Support that's also shaped like an H" = BEAM (H-beam)
-    { cells: [[4,0],[4,1],[4,2],[4,3]], answer: 'BEAM' },
-    // 42A: "Mia in the 'Fifty Shades' series" = RITA (Dakota Johnson's character is Anastasia... but Mia is Rita? Actually Rita Ora played Mia)
-    { cells: [[5,0],[5,1],[5,2],[5,3]], answer: 'RITA' },
-    // 48A: "Cosmetics shop purchase" = SKINS
-    { cells: [[5,20],[5,21],[5,22],[5,23],[5,24]], answer: 'SKINS' },
-    // 58A: '"___ Ninja" YouTube series' = ASKA
-    { cells: [[7,8],[7,9],[7,10],[7,11]], answer: 'ASKA' },
-    // 64A: "Start of a Supremes song or end of a Christmas song" = SANTA
-    { cells: [[8,4],[8,5],[8,6],[8,7],[8,8]], answer: 'SANTA' },
-    // 72A: "Tatum franchise" = BOSTON (Celtics)
-    { cells: [[9,3],[9,4],[9,5],[9,6],[9,7],[9,8]], answer: 'BOSTON' },
-    // 80A: theme entry = KYLIAN (Mbappé)
-    { cells: [[10,10],[10,11],[10,12],[10,13],[10,14],[10,15]], answer: 'KYLIAN' },
-    // 85A: "Guitarist Harrison" = DHANI
-    { cells: [[11,6],[11,7],[11,8],[11,9],[11,10]], answer: 'DHANI' },
-    // 92A: theme = VACATE
-    { cells: [[12,0],[12,1],[12,2],[12,3],[12,4],[12,5]], answer: 'VACATE' },
-    // 100A: "Smartphone powerer" = APP
-    { cells: [[13,4],[13,5],[13,6]], answer: 'APP' },
-    // 106A: "The Cavaliers" = NBA
-    { cells: [[14,0],[14,1],[14,2]], answer: 'NBA' },
-    // 113A: "Anthony's result vs. Jake" = TKO
-    { cells: [[14,21],[14,22],[14,23]], answer: 'TKO' },
-    // 120A: "One of two women in Spinderella's trio" = PEPA (Salt-N-Pepa)
-    { cells: [[16,5],[16,6],[16,7],[16,8]], answer: 'PEPA' },
-    // 127A: "Sounds in the night" = CICADA
-    { cells: [[17,1],[17,2],[17,3],[17,4],[17,5],[17,6]], answer: 'CICADA' },
-    // 136A: "Alpine municipality" = BERGUN (Bergün, Switzerland)
-    { cells: [[18,2],[18,3],[18,4],[18,5],[18,6],[18,7]], answer: 'BERGUN' },
-    // 145A: "Jungler Moon Hyeon-jun" = ONER
-    { cells: [[19,12],[19,13],[19,14],[19,15]], answer: 'ONER' },
-    // 149A: "Theatricality" = OPERATICS
-    { cells: [[20,4],[20,5],[20,6],[20,7],[20,8],[20,9],[20,10],[20,11],[20,12]], answer: 'OPERATICS' },
-    // 158A: "Not one's best effort" = BGAME
-    { cells: [[21,5],[21,6],[21,7],[21,8],[21,9]], answer: 'BGAME' },
-    // 165A: "Amount for Team Trees, Team Seas, or Team Water" = DONATION
-    { cells: [[22,0],[22,1],[22,2],[22,3],[22,4],[22,5],[22,6],[22,7]], answer: 'DONATION' },
-    // 173A: "One that hangs out at the swimming hole" = OPOSSUM
-    { cells: [[23,18],[23,19],[23,20],[23,21],[23,22],[23,23],[23,24]], answer: 'OPOSSUM' },
+    // === ACROSS (clued) ===
+    { cells: [[0,9],[0,10],[0,11],[0,12],[0,13]], answer: 'BANJO' },   // 8A "Players on T-Swift's 'Mean'"
+    { cells: [[1,17],[1,18],[1,19],[1,20],[1,21],[1,22],[1,23],[1,24]], answer: 'STHELENS' }, // 24A "One collapsed in 1980 in Washington"
+    { cells: [[3,5],[3,6],[3,7],[3,8],[3,9]], answer: 'SUGOI' },       // 30A "Words heard in Shibuya"
+    { cells: [[4,0],[4,1],[4,2],[4,3]], answer: 'BEAM' },              // 35A "Support shaped like an H"
+    { cells: [[5,0],[5,1],[5,2],[5,3]], answer: 'RITA' },              // 42A "Mia in 'Fifty Shades'"
+    { cells: [[5,20],[5,21],[5,22],[5,23],[5,24]], answer: 'SKINS' },  // 48A "Cosmetics shop purchase"
+    { cells: [[7,8],[7,9],[7,10],[7,11]], answer: 'ASKA' },            // 58A '"___ Ninja" YouTube series'
+    { cells: [[8,4],[8,5],[8,6],[8,7],[8,8]], answer: 'SANTA' },       // 64A "Start of Supremes/end of Christmas song"
+    { cells: [[9,3],[9,4],[9,5],[9,6],[9,7],[9,8]], answer: 'BOSTON' }, // 72A "Tatum franchise"
+    { cells: [[10,10],[10,11],[10,12],[10,13],[10,14],[10,15]], answer: 'KYLIAN' }, // 80A theme (Mbappé)
+    { cells: [[11,6],[11,7],[11,8],[11,9],[11,10]], answer: 'DHANI' }, // 85A "Guitarist Harrison"
+    { cells: [[12,0],[12,1],[12,2],[12,3],[12,4],[12,5]], answer: 'VACATE' }, // 92A theme
+    { cells: [[13,4],[13,5],[13,6]], answer: 'APP' },                  // 100A "Smartphone powerer"
+    { cells: [[14,0],[14,1],[14,2]], answer: 'NBA' },                  // 106A "The Cavaliers"
+    { cells: [[14,21],[14,22],[14,23]], answer: 'TKO' },               // 113A "Anthony's result vs. Jake"
+    { cells: [[16,5],[16,6],[16,7],[16,8]], answer: 'PEPA' },          // 120A "Spinderella's trio"
+    { cells: [[17,1],[17,2],[17,3],[17,4],[17,5],[17,6]], answer: 'CICADA' }, // 127A "Sounds in the night"
+    { cells: [[19,12],[19,13],[19,14],[19,15]], answer: 'ONER' },      // 145A "Jungler Moon Hyeon-jun"
+    { cells: [[20,4],[20,5],[20,6],[20,7],[20,8],[20,9],[20,10],[20,11],[20,12]], answer: 'OPERATICS' }, // 149A "Theatricality"
+    { cells: [[21,5],[21,6],[21,7],[21,8],[21,9]], answer: 'BGAME' },  // 158A "Not one's best effort"
+    { cells: [[22,0],[22,1],[22,2],[22,3],[22,4],[22,5],[22,6],[22,7]], answer: 'DONATION' }, // 165A "Team Trees/Seas/Water amount"
+    { cells: [[23,18],[23,19],[23,20],[23,21],[23,22],[23,23],[23,24]], answer: 'OPOSSUM' }, // 173A "Hangs out at swimming hole"
 
-    // === DOWN ===
-    // 1D: "Dry comment" = SAGEBRUSH (confirmed by crossings: BEAM→B, RITA→R)
-    { cells: [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]], answer: 'SAGEBRUSH' },
-    // 5D: "T.I. flick" = ATL (2006 film)
-    { cells: [[0,4],[1,4],[2,4]], answer: 'ATL' },
-    // 9D: "Bring Me the Horizon release" = AMO (album)
-    { cells: [[0,10],[1,10],[2,10]], answer: 'AMO' },
-    // 37D: "Takes a hot bath" = SOAK
-    { cells: [[4,10],[5,10],[6,10],[7,10]], answer: 'SOAK' },
-    // 108D: "Motor oil brand" = STP
-    { cells: [[14,7],[15,7],[16,7]], answer: 'STP' },
-    // 142D: "Largest European lake" = LADOGA
-    { cells: [[19,1],[20,1],[21,1],[22,1],[23,1],[24,1]], answer: 'LADOGA' },
-    // 162D: "Easy as falling off ___" = LOG
-    { cells: [[21,18],[22,18],[23,18]], answer: 'LOG' },
-    // 169D: "NW-based retailer" = REI
-    { cells: [[22,14],[23,14],[24,14]], answer: 'REI' },
+    // === DOWN (clued) ===
+    { cells: [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]], answer: 'SAGEBRUSH' }, // 1D "Dry comment"
+    { cells: [[0,4],[1,4],[2,4]], answer: 'ATL' },                    // 5D "T.I. flick"
+    { cells: [[0,10],[1,10],[2,10]], answer: 'AMO' },                  // 9D "Bring Me the Horizon release"
+    { cells: [[4,10],[5,10],[6,10],[7,10]], answer: 'SOAK' },          // 37D "Takes a hot bath"
+    { cells: [[7,16],[8,16],[9,16]], answer: 'PAC' },                  // 60D "___-12 (conference with 2 members in 2025)"
+    { cells: [[12,17],[13,17],[14,17]], answer: 'HAT' },               // 96D "John B is one" (John B. Stetson = hat)
+    { cells: [[14,7],[15,7],[16,7]], answer: 'STP' },                  // 108D "Motor oil brand"
+    { cells: [[19,1],[20,1],[21,1],[22,1],[23,1],[24,1]], answer: 'LADOGA' }, // 142D "Largest European lake"
+    { cells: [[22,14],[23,14],[24,14]], answer: 'REI' },               // 169D "NW-based retailer"
+
+    // === REFERENCE IMAGE READS (additional cells visible in other solvers' grids) ===
+    // Row 0: BANJOS has 6th letter S at col 14 (13D start)
+    { cells: [[0,14]], answer: 'S' },
+    // Row 2: visible letters in 25A/26D area
+    { cells: [[2,7]], answer: 'W' },
+    { cells: [[2,8]], answer: 'O' },
+    // Row 3: visible in 31A area
+    { cells: [[3,12]], answer: 'R' },
+    { cells: [[3,22]], answer: 'O' },
+    // Row 4: visible in 36A area
+    { cells: [[4,8]], answer: 'S' },
+    // Row 5: visible
+    { cells: [[5,17]], answer: 'Y' },
+    // Row 6: visible in 50A/53D area
+    { cells: [[6,13]], answer: 'A' },
+    // Row 7: visible
+    { cells: [[7,15]], answer: 'P' },
+    // Row 8: visible in 66A, 68A areas
+    { cells: [[8,11]], answer: 'S' },
+    { cells: [[8,17]], answer: 'A' },
+    { cells: [[8,18]], answer: 'C' },
+    // Row 9: visible in 73A area
+    { cells: [[9,15]], answer: 'S' },
+    { cells: [[9,17]], answer: 'A' },
+    // Row 10: visible in 81A
+    { cells: [[10,17]], answer: 'T' },
+    // Row 11: visible in 88A
+    { cells: [[11,13]], answer: 'O' },
+    // Row 12: visible in 94A start
+    { cells: [[12,7]], answer: 'I' },
+    { cells: [[12,8]], answer: 'N' },
+    // Row 13: visible in 102A, 103A
+    { cells: [[13,8]], answer: 'N' },
+    { cells: [[13,9]], answer: 'G' },
+    { cells: [[13,15]], answer: 'P' },
+    { cells: [[13,16]], answer: 'O' },
+    // Row 14: visible in 107A, 109A
+    { cells: [[14,9]], answer: 'E' },
+    { cells: [[14,10]], answer: 'M' },
+    // Row 15: visible in 114A, 116D
+    { cells: [[15,6]], answer: 'T' },
+    { cells: [[15,8]], answer: 'H' },
+    { cells: [[15,9]], answer: 'E' },
+    // Row 16: visible
+    { cells: [[16,22]], answer: 'B' },
+    // Row 17: visible in 129A, 134A
+    { cells: [[17,8]], answer: 'R' },
+    { cells: [[17,22]], answer: 'R' },
+    // Row 18: visible in 138A
+    { cells: [[18,9]], answer: 'W' },
+    // Row 19: visible in 143A
+    { cells: [[19,8]], answer: 'I' },
+    // Row 20: visible
+    { cells: [[20,0]], answer: 'A' },
+    // Row 21: visible from reference
+    { cells: [[21,11]], answer: 'S' },
+    { cells: [[21,18]], answer: 'A' },
+    // Row 22: circled cell + reference reads
+    { cells: [[22,18]], answer: 'O' },
+    // Row 24: visible
+    { cells: [[24,0]], answer: 'A' },
   ];
 
   const map: Record<string, string> = {};
